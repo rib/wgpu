@@ -199,6 +199,7 @@ impl super::Instance {
         entry: ash::Entry,
         raw_instance: ash::Instance,
         driver_api_version: u32,
+        platform_version: u32,
         extensions: Vec<&'static CStr>,
         flags: crate::InstanceFlags,
         has_nv_optimus: bool,
@@ -263,6 +264,7 @@ impl super::Instance {
                 get_physical_device_properties,
                 entry,
                 has_nv_optimus,
+                platform_version,
             }),
             extensions,
         })
@@ -531,6 +533,18 @@ impl crate::Instance<super::Api> for super::Instance {
             layers
         };
 
+        #[cfg(target_os = "android")]
+        let platform_version = {
+            let mut prop = android_properties::getprop("ro.build.version.sdk");
+            if let Some(val) = prop.value() {
+                u32::from_str_radix(&val, 10).expect("Failed to parse ro.build.version.sdk property")
+            } else {
+                panic!("Couldn't read ro.build.version.sdk system property");
+            }
+        };
+        #[cfg(not(target_os = "android"))]
+        let platform_version = 0;
+
         let vk_instance = {
             let str_pointers = layers
                 .iter()
@@ -557,6 +571,7 @@ impl crate::Instance<super::Api> for super::Instance {
             entry,
             vk_instance,
             driver_api_version,
+            platform_version,
             extensions,
             desc.flags,
             has_nv_optimus,
@@ -685,10 +700,25 @@ impl crate::Surface<super::Api> for super::Surface {
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let sc = self.swapchain.as_mut().unwrap();
 
-        let timeout_ns = match timeout {
+        let mut timeout_ns = match timeout {
             Some(duration) => duration.as_nanos() as u64,
             None => u64::MAX
         };
+
+        // AcquireNextImageKHR on Android (prior to Android 11) doesn't support timeouts
+        // and will also logs verbose warnings if tying to use a timeout.
+        //
+        // Android 10 implementation for reference:
+        // https://android.googlesource.com/platform/frameworks/native/+/refs/tags/android-mainline-10.0.0_r13/vulkan/libvulkan/swapchain.cpp#1426
+        // Android 11 implementation for reference:
+        // https://android.googlesource.com/platform/frameworks/native/+/refs/tags/android-mainline-11.0.0_r45/vulkan/libvulkan/swapchain.cpp#1438
+        //
+        // Android 11 corresponds to an SDK_INT/ro.build.version.sdk of 30
+        if cfg!(target_os = "android") {
+            if self.instance.platform_version < 30 {
+                timeout_ns = u64::MAX;
+            }
+        }
 
         // will block if no image is available
         let (index, suboptimal) =
