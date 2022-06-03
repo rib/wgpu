@@ -10,6 +10,7 @@ extract it from the hub.
 !*/
 
 use std::borrow::Borrow;
+use std::time::Duration;
 
 #[cfg(feature = "trace")]
 use crate::device::trace::Action;
@@ -125,7 +126,7 @@ impl<G: GlobalIdentityHandlerFactory> Global<G> {
         let _ = device;
 
         let suf = A::get_surface_mut(surface);
-        let (texture_id, status) = match unsafe { suf.raw.acquire_texture(FRAME_TIMEOUT_MS) } {
+        let (texture_id, status) = match unsafe { suf.raw.acquire_texture(Some(Duration::from_millis(FRAME_TIMEOUT_MS as u64))) } {
             Ok(Some(ast)) => {
                 let clear_view_desc = hal::TextureViewDescriptor {
                     label: Some("clear surface texture view"),

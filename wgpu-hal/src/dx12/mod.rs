@@ -547,7 +547,11 @@ impl SwapChain {
         self.raw
     }
 
-    unsafe fn wait(&mut self, timeout_ms: u32) -> Result<bool, crate::SurfaceError> {
+    unsafe fn wait(&mut self, timeout: Option<std::time::Duration>) -> Result<bool, crate::SurfaceError> {
+        let timeout_ms = match timeout {
+            Some(duration) => duration.as_millis() as u32,
+            None => winbase::INFINITE
+        };
         match synchapi::WaitForSingleObject(self.waitable, timeout_ms) {
             winbase::WAIT_ABANDONED | winbase::WAIT_FAILED => Err(crate::SurfaceError::Lost),
             winbase::WAIT_OBJECT_0 => Ok(true),
@@ -677,7 +681,7 @@ impl crate::Surface<Api> for Surface {
 
     unsafe fn unconfigure(&mut self, device: &Device) {
         if let Some(mut sc) = self.swap_chain.take() {
-            let _ = sc.wait(winbase::INFINITE);
+            let _ = sc.wait(None);
             //TODO: this shouldn't be needed,
             // but it complains that the queue is still used otherwise
             let _ = device.wait_idle();
@@ -688,11 +692,11 @@ impl crate::Surface<Api> for Surface {
 
     unsafe fn acquire_texture(
         &mut self,
-        timeout_ms: u32,
+        timeout: Option<std::time::Duration>,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<Api>>, crate::SurfaceError> {
         let sc = self.swap_chain.as_mut().unwrap();
 
-        sc.wait(timeout_ms)?;
+        sc.wait(timeout)?;
 
         let base_index = sc.raw.GetCurrentBackBufferIndex() as usize;
         let index = (base_index + sc.acquired_count) % sc.resources.len();

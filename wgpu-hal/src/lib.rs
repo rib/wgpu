@@ -192,7 +192,7 @@ pub trait Surface<A: Api>: Send + Sync {
     /// Returns `None` on timing out.
     unsafe fn acquire_texture(
         &mut self,
-        timeout_ms: u32,
+        timeout: Option<std::time::Duration>,
     ) -> Result<Option<AcquiredSurfaceTexture<A>>, SurfaceError>;
     unsafe fn discard_texture(&mut self, texture: A::SurfaceTexture);
 }
